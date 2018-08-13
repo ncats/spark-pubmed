@@ -48,7 +48,7 @@ public class MeshLookup implements Serializable {
         try (BufferedReader br = new BufferedReader
              (new InputStreamReader
               (new GZIPInputStream (MeshLookup.class.getResourceAsStream
-                                    ("/mesh_tree.csv.gz"))))) {
+                                    ("/mesh2018_tree.csv.gz"))))) {
             for (String line; (line = br.readLine()) != null; ) {
                 String[] toks = tokenize (line);
                 //System.out.println(toks[0]+"\t"+toks[1]+"\t"+toks[2]);
