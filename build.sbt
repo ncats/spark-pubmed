@@ -11,7 +11,7 @@ lazy val commonDependencies = Seq(
 lazy val commonSettings = Seq(
   name := """spark-pubmed""",
   scalaVersion := "2.11.8",
-  version := "0.0.2"
+  version := "0.0.3"
 )
 
 lazy val javaBuildOptions = Seq(

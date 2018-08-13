@@ -36,36 +36,6 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 
 public class SparkPubMed  {    
-    public static class MeshLookup implements Serializable {
-        Map<String, List<String>> treeNumbers = new HashMap<>();        
-        public MeshLookup () {
-            try (BufferedReader br = new BufferedReader
-                 (new InputStreamReader
-                  (new GZIPInputStream (SparkPubMed.class.getResourceAsStream
-                                        ("/mesh_tree.csv.gz"))))) {
-                for (String line; (line = br.readLine()) != null; ) {
-                    String[] toks = tokenize (line);
-                    //System.out.println(toks[0]+"\t"+toks[1]+"\t"+toks[2]);
-                    List<String> tr = treeNumbers.get(toks[0]);
-                    if (tr == null) {
-                        treeNumbers.put(toks[0], tr = new ArrayList<>());
-                    }
-                    tr.add(toks[2]);
-                }
-                System.err.println("## "+treeNumbers.size()
-                                   +" descriptors with tree numbers loaded!");
-            }
-            catch (IOException ex) {
-                ex.printStackTrace();
-            }
-        }
-
-        public String[] getTreeNumbers (String id) {
-            List<String> tr = treeNumbers.get(id);
-            return tr != null ? tr.toArray(new String[0]) : null;
-        }
-    }
-
     public static class TreeNumberMapping
         implements Serializable, Function<Row, Row> {
         static final MeshLookup mesh = new MeshLookup ();
@@ -89,38 +59,6 @@ public class SparkPubMed  {
             (new MeshLookup (),
              scala.reflect.ClassTag$.MODULE$.apply(MeshLookup.class));
         */
-    }
-
-    static String[] tokenize (String line) {
-        int len = line.length();
-        List<String> toks = new ArrayList<>();
-        StringBuilder buf = new StringBuilder ();
-        boolean quote = false;
-        for (int i = 0; i < len; ++i) {
-            char ch = line.charAt(i);
-            switch (ch) {
-            case ',':
-                if (quote) {
-                    buf.append(ch);
-                }
-                else {
-                    toks.add(buf.toString());
-                    buf.setLength(0);                    
-                }
-                break;
-                
-            case '"':
-                quote = !quote;
-                break;
-                
-            default:
-                buf.append(ch);
-            }
-        }
-        if (buf.length() > 0)
-            toks.add(buf.toString());
-        
-        return toks.isEmpty() ? null : toks.toArray(new String[0]);
     }
 
     Dataset<Row> process (Dataset<Row> df, String output) throws Exception {
@@ -156,11 +94,11 @@ public class SparkPubMed  {
         df = df.withColumn("TreeNumber",
                            functions.explode(df.col("TreeNumber")));
         
-        System.out.println("############ count = "+df.count());
+        //System.out.println("############ count = "+df.count());
         //df.printSchema();
         //df.show(100);
 
-        df.repartition(1)
+        df//.repartition(1)
             .write()
             .mode(SaveMode.Append)
             .format("csv")
@@ -174,7 +112,7 @@ public class SparkPubMed  {
         Dataset<Row> df = spark.read().format("com.databricks.spark.xml")
             .option("rootTag", "PubmedArticleSet")
             .option("rowTag", "PubmedArticle")
-            .load("s3://"+bucket+"/"+input);
+            .load("s3://"+bucket+"/"+input+"/*.xml.gz");
         process (df, "s3://"+bucket+"/"+output);
     }
     
@@ -191,7 +129,7 @@ public class SparkPubMed  {
     
     public static void main(String[] argv) throws Exception {
         if (argv.length < 2) {
-            System.err.println("Usage: SparkPubMed BUCKET INPUT...");
+            System.err.println("Usage: SparkPubMed BUCKET INPUT [OUTPUT]");
             System.exit(1);
         }
 
@@ -207,27 +145,14 @@ public class SparkPubMed  {
         String bucket = argv[0];
         spark.log().debug("### BUCKET="+bucket);
         
-        for (int i = 1; i < argv.length; ++i) {
-            String outpath = argv[i]+".msh";
-            File f = new File (argv[i]);
-            if (f.exists()) {
-                pubmed.process(bucket, new GZIPInputStream
-                               (new FileInputStream (f)));
-            }
-            else {
-                ObjectListing listing = s3.listObjects(bucket, argv[i]);
-                do {
-                    for (S3ObjectSummary sobj : listing.getObjectSummaries()) {
-                        String key = sobj.getKey();
-                        if (key.endsWith(".xml.gz")) {
-                            pubmed.processEMR(sobj.getBucketName(),
-                                              outpath, key);
-                        }
-                    }
-                    listing = s3.listNextBatchOfObjects(listing);
-                }
-                while (listing.isTruncated());
-            }
+        File f = new File (argv[1]);
+        if (f.exists()) {
+            pubmed.process(bucket, new GZIPInputStream
+                           (new FileInputStream (f)));
+        }
+        else {
+            String outpath = argv.length < 3 ? argv[1]+".msh" : argv[2];
+            pubmed.processEMR(bucket, outpath, argv[1]);
         }
         
         spark.stop();
