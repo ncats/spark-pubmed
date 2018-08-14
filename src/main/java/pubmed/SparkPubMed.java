@@ -44,9 +44,22 @@ public class SparkPubMed  {
 
         public Row call (Row row) {
             String ui = row.getString(1);
+            String[] tr = mesh.getTreeNumbers(ui);
+            if (tr != null) {
+                Set<String> paths = new TreeSet<>();
+                for (String p : tr) {
+                    String[] nodes = p.split("\\.");
+                    StringBuilder path = new StringBuilder (nodes[0]);
+                    for (int i = 1; i < nodes.length; ++i) {
+                        paths.add(path.toString());
+                        path.append("."+nodes[i]);
+                    }
+                    paths.add(path.toString());
+                }
+                tr = paths.toArray(new String[0]);
+            }
             return RowFactory.create
-                (row.getLong(0), ui, row.getString(2),
-                 mesh.getTreeNumbers(ui));
+                (row.getLong(0), ui, row.getString(2), tr);
         }
     }
 
